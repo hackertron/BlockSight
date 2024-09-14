@@ -17,7 +17,7 @@ type Retrieval struct {
 
 // NewRetrieval creates a new instance of Retrieval
 func NewRetrieval(alchemyAPIKey string) (*Retrieval, error) {
-	client, err := ethclient.Dial(fmt.Sprintf("https://eth-mainnet.alchemyapi.io/v2/%s", alchemyAPIKey))
+	client, err := ethclient.Dial(fmt.Sprintf("https://eth-mainnet.g.alchemy.com/v2/%s", alchemyAPIKey))
 	if err != nil {
 		return nil, fmt.Errorf("failed to connect to the Ethereum network: %v", err)
 	}

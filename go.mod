@@ -2,7 +2,10 @@ module github.com/hackertron/blocksight
 
 go 1.22.1
 
-require github.com/ethereum/go-ethereum v1.14.8
+require (
+	github.com/ethereum/go-ethereum v1.14.8
+	github.com/joho/godotenv v1.5.1
+)
 
 require (
 	github.com/Microsoft/go-winio v0.6.2 // indirect
