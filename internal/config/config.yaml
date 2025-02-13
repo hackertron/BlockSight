@@ -1,0 +1,18 @@
+alchemy:
+  api_key: ${ALCHEMY_API_KEY}
+  network: "eth-mainnet"
+  retry_count: 3
+  retry_delay: "1s"
+  rate_limit: 10
+
+kafka:
+  brokers:
+    - "localhost:9092"
+  topics:
+    blocks: "ethereum.blocks"
+    transactions: "ethereum.transactions"
+    receipts: "ethereum.receipts"
+
+metrics:
+  enabled: true
+  port: 2112
