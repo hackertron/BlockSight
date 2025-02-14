@@ -6,6 +6,10 @@ import (
 	"github.com/spf13/viper"
 )
 
+type KafkaTopics struct {
+	Blocks string
+}
+
 type Config struct {
 	Alchemy struct {
 		APIKey     string        `mapstructure:"api_key"`
@@ -16,11 +20,7 @@ type Config struct {
 	}
 	Kafka struct {
 		Brokers []string `mapstructure:"brokers"`
-		Topics  struct {
-			Blocks       string `mapstructure:"blocks"`
-			Transactions string `mapstructure:"transactions"`
-			Receipts     string `mapstructure:"receipts"`
-		} `mapstructure:"topics"`
+		Topics  KafkaTopics
 	}
 	Metrics struct {
 		Enabled bool `mapstructure:"enabled"`

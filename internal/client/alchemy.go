@@ -4,41 +4,57 @@ import (
 	"context"
 	"fmt"
 	"math/big"
-	"os"
 	"time"
 
 	"github.com/ethereum/go-ethereum/common"
+	"github.com/ethereum/go-ethereum/core/types"
 	"github.com/ethereum/go-ethereum/ethclient"
+	"github.com/hackertron/blocksight/internal/config"
 	"github.com/hackertron/blocksight/internal/models"
+	"github.com/hackertron/blocksight/internal/utils"
 )
 
 type AlchemyClient struct {
-	client *ethclient.Client
+	client      *ethclient.Client
+	rateLimiter *utils.RateLimiter
+	retryConfig utils.RetryConfig
 }
 
 // NewAlchemyClient creates a new Alchemy client
-func NewAlchemyClient() (*AlchemyClient, error) {
-	apiKey := os.Getenv("ALCHEMY_API_KEY")
-	network := os.Getenv("ALCHEMY_NETWORK")
+func NewAlchemyClient(cfg *config.Config) (*AlchemyClient, error) {
+	//apiKey := os.Getenv("ALCHEMY_API_KEY")
+	//network := os.Getenv("ALCHEMY_NETWORK")
 
-	if apiKey == "" || network == "" {
-		return nil, fmt.Errorf("ALCHEMY_API_KEY and ALCHEMY_NETWORK must be set")
-	}
+	//if apiKey == "" || network == "" {
+	//	return nil, fmt.Errorf("ALCHEMY_API_KEY and ALCHEMY_NETWORK must be set")
+	//}
 
-	url := fmt.Sprintf("https://%s.g.alchemy.com/v2/%s", network, apiKey)
+	url := fmt.Sprintf("https://%s.g.alchemy.com/v2/%s", cfg.Alchemy.Network, cfg.Alchemy.APIKey)
 	client, err := ethclient.Dial(url)
 	if err != nil {
 		return nil, fmt.Errorf("failed to connect to Alchemy: %v", err)
 	}
 
 	return &AlchemyClient{
-		client: client,
+		client:      client,
+		rateLimiter: utils.NewRateLimiter(cfg.Alchemy.RateLimit),
+		retryConfig: utils.RetryConfig{
+			MaxRetries: cfg.Alchemy.RetryCount,
+			RetryDelay: cfg.Alchemy.RetryDelay,
+		},
 	}, nil
 }
 
 // GetLatestBlock retrieves the latest block
 func (c *AlchemyClient) GetLatestBlock(ctx context.Context) (*models.Block, error) {
-	blockNumber, err := c.client.BlockNumber(ctx)
+	c.rateLimiter.Wait()
+	var blockNumber uint64
+	err := utils.WithRetry(ctx, func() error {
+		var err error
+		blockNumber, err = c.client.BlockNumber(ctx)
+		return err
+	}, c.retryConfig)
+
 	if err != nil {
 		return nil, fmt.Errorf("failed to get latest block number: %v", err)
 	}
@@ -48,62 +64,86 @@ func (c *AlchemyClient) GetLatestBlock(ctx context.Context) (*models.Block, erro
 
 // GetBlockByNumber retrieves a specific block by number
 func (c *AlchemyClient) GetBlockByNumber(ctx context.Context, number *big.Int) (*models.Block, error) {
-	block, err := c.client.BlockByNumber(ctx, number)
-	if err != nil {
-		return nil, fmt.Errorf("failed to get block by number %v: %v", number, err)
-	}
+	c.rateLimiter.Wait()
+	var block *models.Block
 
-	transactions := make([]models.Transaction, len(block.Transactions()))
-	for i, tx := range block.Transactions() {
-		transactions[i] = models.Transaction{
-			Hash:     tx.Hash(),
-			From:     common.Address{}, // Need to get from receipt
-			To:       tx.To(),
-			Value:    tx.Value(),
-			GasPrice: tx.GasPrice(),
-			Gas:      tx.Gas(),
-			Input:    tx.Data(),
-			Nonce:    tx.Nonce(),
+	err := utils.WithRetry(ctx, func() error {
+		var ethBlock *types.Block
+		var err error
+		ethBlock, err = c.client.BlockByNumber(ctx, number)
+		if err != nil {
+			return fmt.Errorf("failed to get block by number %v: %v", number, err)
 		}
-	}
 
-	return &models.Block{
-		Number:        block.Number(),
-		Hash:          block.Hash(),
-		ParentHash:    block.ParentHash(),
-		Timestamp:     time.Unix(int64(block.Time()), 0),
-		Transactions:  transactions,
-		GasUsed:       new(big.Int).SetUint64(block.GasUsed()),
-		GasLimit:      new(big.Int).SetUint64(block.GasLimit()),
-		BaseFeePerGas: block.BaseFee(),
-	}, nil
+		transactions := make([]models.Transaction, len(ethBlock.Transactions()))
+		for i, tx := range ethBlock.Transactions() {
+			transactions[i] = models.Transaction{
+				Hash:     tx.Hash(),
+				From:     common.Address{}, // Need to get from receipt
+				To:       tx.To(),
+				Value:    tx.Value(),
+				GasPrice: tx.GasPrice(),
+				Gas:      tx.Gas(),
+				Input:    tx.Data(),
+				Nonce:    tx.Nonce(),
+			}
+		}
+
+		block = &models.Block{
+			Number:        ethBlock.Number(),
+			Hash:          ethBlock.Hash(),
+			ParentHash:    ethBlock.ParentHash(),
+			Timestamp:     time.Unix(int64(ethBlock.Time()), 0),
+			Transactions:  transactions,
+			GasUsed:       new(big.Int).SetUint64(ethBlock.GasUsed()),
+			GasLimit:      new(big.Int).SetUint64(ethBlock.GasLimit()),
+			BaseFeePerGas: ethBlock.BaseFee(),
+		}
+		return nil
+	}, c.retryConfig)
+
+	if err != nil {
+		return nil, err
+	}
+	return block, nil
 }
 
 // GetTransactionReceipt retrieves a transaction receipt
 func (c *AlchemyClient) GetTransactionReceipt(ctx context.Context, txHash common.Hash) (*models.TransactionReceipt, error) {
-	receipt, err := c.client.TransactionReceipt(ctx, txHash)
-	if err != nil {
-		return nil, fmt.Errorf("failed to get transaction receipt for %v: %v", txHash, err)
-	}
+	c.rateLimiter.Wait()
+	var receipt *models.TransactionReceipt
 
-	logs := make([]models.Log, len(receipt.Logs))
-	for i, log := range receipt.Logs {
-		logs[i] = models.Log{
-			Address:     log.Address,
-			Topics:      log.Topics,
-			Data:        log.Data,
-			BlockNumber: new(big.Int).SetUint64(log.BlockNumber),
-			TxHash:      log.TxHash,
-			LogIndex:    uint(log.Index),
+	err := utils.WithRetry(ctx, func() error {
+		ethReceipt, err := c.client.TransactionReceipt(ctx, txHash)
+		if err != nil {
+			return fmt.Errorf("failed to get transaction receipt for %v: %v", txHash, err)
 		}
-	}
 
-	return &models.TransactionReceipt{
-		TransactionHash: receipt.TxHash,
-		BlockHash:       receipt.BlockHash,
-		BlockNumber:     receipt.BlockNumber,
-		GasUsed:         new(big.Int).SetUint64(receipt.GasUsed),
-		Status:          receipt.Status,
-		Logs:            logs,
-	}, nil
+		logs := make([]models.Log, len(ethReceipt.Logs))
+		for i, log := range ethReceipt.Logs {
+			logs[i] = models.Log{
+				Address:     log.Address,
+				Topics:      log.Topics,
+				Data:        log.Data,
+				BlockNumber: new(big.Int).SetUint64(log.BlockNumber),
+				TxHash:      log.TxHash,
+				LogIndex:    uint(log.Index),
+			}
+		}
+
+		receipt = &models.TransactionReceipt{
+			TransactionHash: ethReceipt.TxHash,
+			BlockHash:       ethReceipt.BlockHash,
+			BlockNumber:     ethReceipt.BlockNumber,
+			GasUsed:         new(big.Int).SetUint64(ethReceipt.GasUsed),
+			Status:          ethReceipt.Status,
+			Logs:            logs,
+		}
+		return nil
+	}, c.retryConfig)
+
+	if err != nil {
+		return nil, err
+	}
+	return receipt, nil
 }
