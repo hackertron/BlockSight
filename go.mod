@@ -7,6 +7,7 @@ require (
 	github.com/ethereum/go-ethereum v1.15.1
 	github.com/prometheus/client_golang v1.20.5
 	github.com/spf13/viper v1.19.0
+	go.uber.org/zap v1.21.0
 	golang.org/x/time v0.10.0
 )
 

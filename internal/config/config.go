@@ -12,11 +12,12 @@ type KafkaTopics struct {
 
 type Config struct {
 	Alchemy struct {
-		APIKey     string        `mapstructure:"api_key"`
-		Network    string        `mapstructure:"network"`
-		RetryCount int           `mapstructure:"retry_count"`
-		RetryDelay time.Duration `mapstructure:"retry_delay"`
-		RateLimit  int           `mapstructure:"rate_limit"`
+		APIKey       string        `mapstructure:"api_key"`
+		Network      string        `mapstructure:"network"`
+		RetryCount   int           `mapstructure:"retry_count"`
+		RetryDelay   time.Duration `mapstructure:"retry_delay"`
+		RateLimit    int           `mapstructure:"rate_limit"`
+		WebSocketURL string        `mapstructure:"websocket_url"`
 	}
 	Kafka struct {
 		Brokers []string `mapstructure:"brokers"`

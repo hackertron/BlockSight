@@ -1,5 +1,6 @@
 alchemy:
   api_key: ${ALCHEMY_API_KEY}
+  websocket_url: "wss://eth-mainnet.ws.alchemyapi.io/v2/api-here"
   network: "eth-mainnet"
   retry_count: 3
   retry_delay: "1s"

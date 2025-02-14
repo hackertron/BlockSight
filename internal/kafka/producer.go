@@ -46,6 +46,15 @@ func (p *Producer) PublishBlock(block *models.Block) error {
 	return err
 }
 
+func (p *Producer) PublishBlocks(blocks []*models.Block) error {
+	for _, block := range blocks {
+		if err := p.PublishBlock(block); err != nil {
+			return err
+		}
+	}
+	return nil
+}
+
 func (p *Producer) Close() error {
 	return p.producer.Close()
 }
