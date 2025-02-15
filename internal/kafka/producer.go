@@ -2,6 +2,7 @@ package kafka
 
 import (
 	"encoding/json"
+	"time"
 
 	"github.com/IBM/sarama"
 	"github.com/hackertron/blocksight/internal/config"
@@ -18,8 +19,23 @@ func NewProducer(cfg *config.Config) (*Producer, error) {
 	config.Producer.Return.Successes = true
 	config.Producer.RequiredAcks = sarama.WaitForAll
 	config.Producer.Retry.Max = 5
+	config.Producer.Retry.Backoff = time.Second * 2
 
-	producer, err := sarama.NewSyncProducer(cfg.Kafka.Brokers, config)
+	// Important: Set API version to ensure compatibility
+	config.Version = sarama.V2_8_0_0
+
+	// Try connecting to Kafka with retries
+	var producer sarama.SyncProducer
+	var err error
+
+	for i := 0; i < 5; i++ {
+		producer, err = sarama.NewSyncProducer(cfg.Kafka.Brokers, config)
+		if err == nil {
+			break
+		}
+		time.Sleep(time.Second * 5)
+	}
+
 	if err != nil {
 		return nil, err
 	}
